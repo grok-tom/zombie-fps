@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const loader = new GLTFLoader();
 
@@ -36,12 +37,16 @@ export async function loadGameAssets() {
     'assets/city/building-e.glb',
     'assets/city/building-skyscraper-a.glb',
   ];
-  for (const f of buildingFiles) {
-    try {
-      const g = await loadGltf(f);
-      buildings.push(prepare(g.scene));
-    } catch (e) {
-      console.warn('building skip', f, e);
+  const buildingResults = await Promise.allSettled(
+    buildingFiles.map((f) => loadGltf(f))
+  );
+  for (let i = 0; i < buildingResults.length; i++) {
+    const r = buildingResults[i];
+    const f = buildingFiles[i];
+    if (r.status === 'fulfilled') {
+      buildings.push(prepare(r.value.scene));
+    } else {
+      console.warn('building skip', f, r.reason);
     }
   }
 
@@ -83,7 +88,8 @@ export async function loadGameAssets() {
 
 export function cloneZombie(assets) {
   if (!assets.zombiePrototype) return null;
-  return assets.zombiePrototype.clone(true);
+  // Skinned mesh: Object3D.clone breaks skeleton/bone binding
+  return SkeletonUtils.clone(assets.zombiePrototype);
 }
 
 export function clonePistol(assets) {

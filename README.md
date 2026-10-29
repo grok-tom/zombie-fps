@@ -47,6 +47,10 @@ js/ui.js        # HUD / 结算
 js/audio.js     # WebAudio 音效
 ```
 
+## 美术资源
+
+夜景街区建筑、丧尸与枪械模型均为本地 vendored 的免费可商用 glTF（主要为 CC0）。作者、许可证与来源见 **`assets/CREDITS.md`**。场景使用冷月光、暖路灯点光、指数雾与 bloom/暗角后处理。
+
 ## 技术
 
 Three.js r160（CDN import map），原生 ES modules，无需打包。

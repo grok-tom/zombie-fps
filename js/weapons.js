@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clonePistol } from './assets.js';
 
 const WEAPONS = {
   pistol: {
@@ -23,10 +24,52 @@ const WEAPONS = {
   },
 };
 
+const VIEW_POS = new THREE.Vector3(0.22, -0.22, -0.45);
+const PISTOL_LENGTH = 0.42;
+const SMG_LENGTH = 0.5;
+
+function fitViewmodel(root, targetLength) {
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const longest = Math.max(size.x, size.y, size.z, 0.01);
+  const s = targetLength / longest;
+  root.scale.setScalar(s);
+  root.updateMatrixWorld(true);
+  const box2 = new THREE.Box3().setFromObject(root);
+  const center = new THREE.Vector3();
+  box2.getCenter(center);
+  root.position.sub(center);
+  root.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = false;
+      o.frustumCulled = false;
+    }
+  });
+}
+
+function createFallbackGunParts(group) {
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 0.1, 0.28),
+    new THREE.MeshStandardMaterial({ color: 0x222528, metalness: 0.7, roughness: 0.35 })
+  );
+  body.position.set(0, 0, 0);
+  group.add(body);
+  const barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.018, 0.022, 0.22, 8),
+    new THREE.MeshStandardMaterial({ color: 0x111214, metalness: 0.85, roughness: 0.3 })
+  );
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 0.03, -0.2);
+  group.add(barrel);
+}
+
 export class Weapons {
-  constructor(scene, camera) {
+  constructor(scene, camera, assets = null) {
     this.scene = scene;
     this.camera = camera;
+    this.assets = assets;
     this.raycaster = new THREE.Raycaster();
     this.current = 'pistol';
     this.hasSmg = false;
@@ -42,34 +85,68 @@ export class Weapons {
     this.scene.add(this.muzzleLight);
     this.muzzleFlashTime = 0;
     this.sparks = [];
+    this._pistolMesh = null;
+    this._smgMesh = null;
     this._onDown = (e) => { if (e.button === 0) this.mouseDown = true; };
     this._onUp = (e) => { if (e.button === 0) this.mouseDown = false; };
     this._onKey = (e) => {
       if (e.code === 'KeyR') this.startReload();
-      if (e.code === 'Digit1') this.current = 'pistol';
-      if (e.code === 'Digit2' && this.hasSmg) this.current = 'smg';
+      if (e.code === 'Digit1') {
+        this.current = 'pistol';
+        this._syncViewmodel();
+      }
+      if (e.code === 'Digit2' && this.hasSmg) {
+        this.current = 'smg';
+        this._syncViewmodel();
+      }
     };
     document.addEventListener('mousedown', this._onDown);
     document.addEventListener('mouseup', this._onUp);
     document.addEventListener('keydown', this._onKey);
 
-    // Simple gun model attached to camera
     this.gunGroup = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.1, 0.28),
-      new THREE.MeshStandardMaterial({ color: 0x222528, metalness: 0.7, roughness: 0.35 })
-    );
-    body.position.set(0.18, -0.16, -0.35);
-    this.gunGroup.add(body);
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.018, 0.022, 0.22, 8),
-      new THREE.MeshStandardMaterial({ color: 0x111214, metalness: 0.85, roughness: 0.3 })
-    );
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0.18, -0.13, -0.52);
-    this.gunGroup.add(barrel);
+    let pistol = null;
+    try {
+      pistol = assets ? clonePistol(assets) : null;
+    } catch (e) {
+      console.warn('clonePistol failed, using box fallback', e);
+      pistol = null;
+    }
+
+    if (pistol) {
+      // Kenney blasters typically face +Z; rotate so barrel aims camera-forward (-Z)
+      pistol.rotation.y = Math.PI;
+      fitViewmodel(pistol, PISTOL_LENGTH);
+      this.gunGroup.add(pistol);
+      this._pistolMesh = pistol;
+
+      if (assets && assets.smgPrototype) {
+        try {
+          const smg = assets.smgPrototype.clone(true);
+          smg.rotation.y = Math.PI;
+          fitViewmodel(smg, SMG_LENGTH);
+          smg.visible = false;
+          this.gunGroup.add(smg);
+          this._smgMesh = smg;
+        } catch (e) {
+          console.warn('smg clone failed', e);
+        }
+      }
+    } else {
+      createFallbackGunParts(this.gunGroup);
+    }
+
+    this.gunGroup.position.copy(VIEW_POS);
     this.camera.add(this.gunGroup);
     this.scene.add(this.camera);
+    this._syncViewmodel();
+  }
+
+  _syncViewmodel() {
+    if (!this._pistolMesh) return;
+    const showSmg = this.current === 'smg' && this._smgMesh;
+    this._pistolMesh.visible = !showSmg;
+    if (this._smgMesh) this._smgMesh.visible = !!showSmg;
   }
 
   dispose() {
@@ -107,6 +184,7 @@ export class Weapons {
     this.state.smg.mag = WEAPONS.smg.magSize;
     this.state.smg.reserve = WEAPONS.smg.reserveStart;
     this.current = 'smg';
+    this._syncViewmodel();
   }
 
   startReload() {
@@ -134,6 +212,7 @@ export class Weapons {
     this.mouseDown = false;
     this.muzzleFlashTime = 0;
     this.clearSparks();
+    this._syncViewmodel();
   }
 
   clearSparks() {
@@ -201,8 +280,10 @@ export class Weapons {
       }
     }
 
-    // Gun bob
-    this.gunGroup.position.y = Math.sin(performance.now() * 0.008) * 0.004;
+    // Gun bob relative to viewmodel base
+    this.gunGroup.position.x = VIEW_POS.x;
+    this.gunGroup.position.y = VIEW_POS.y + Math.sin(performance.now() * 0.008) * 0.004;
+    this.gunGroup.position.z = VIEW_POS.z;
 
     if (!locked || !this.aliveCheck) return null;
     if (!this.mouseDown) return null;

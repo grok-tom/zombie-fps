@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>夜巷求生 · Zombie FPS</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #e8eef8; }
+    #game-canvas { display: block; width: 100%; height: 100%; }
+    #hud {
+      position: fixed; inset: 0; pointer-events: none; z-index: 10;
+    }
+    .crosshair {
+      position: absolute; left: 50%; top: 50%; width: 28px; height: 28px;
+      transform: translate(-50%, -50%);
+    }
+    .crosshair::before, .crosshair::after {
+      content: ""; position: absolute; background: rgba(255,255,255,1);
+      box-shadow: 0 0 4px rgba(0,0,0,0.6);
+    }
+    .crosshair::before { left: 50%; top: 0; width: 3px; height: 100%; transform: translateX(-50%); }
+    .crosshair::after { top: 50%; left: 0; height: 3px; width: 100%; transform: translateY(-50%); }
+    .hud-bottom {
+      position: absolute; left: 24px; right: 24px; bottom: 22px;
+      display: flex; justify-content: space-between; align-items: flex-end;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.85);
+    }
+    .stat { font-size: 18px; letter-spacing: 0.04em; opacity: 1; font-weight: 600; }
+    .stat strong { font-size: 32px; font-weight: 800; color: #9fd4ff; }
+    .stat.hp strong { color: #ff7a7a; }
+    .stat.ammo strong { color: #ffe08a; }
+    .stat.wave strong, .stat.kills strong { color: #b8f0c0; }
+    #vignette {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 45%, rgba(120,0,0,0.55) 100%);
+      opacity: 0; transition: opacity 0.15s ease; pointer-events: none;
+    }
+    #banner {
+      position: absolute; left: 50%; top: 22%; transform: translateX(-50%);
+      font-size: 36px; font-weight: 800; letter-spacing: 0.12em;
+      text-transform: uppercase; opacity: 0; transition: opacity 0.35s ease;
+      text-shadow: 0 0 24px rgba(255,60,60,0.55), 0 2px 8px rgba(0,0,0,0.9);
+      white-space: nowrap;
+    }
+    #banner.show { opacity: 1; }
+    #overlay {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at center, rgba(12,14,22,0.35) 0%, rgba(4,5,10,0.55) 100%);
+      pointer-events: auto; text-align: center; padding: 24px;
+    }
+    #overlay.hidden { display: none; }
+    #overlay h1 {
+      font-size: 42px; font-weight: 800; margin-bottom: 12px;
+      letter-spacing: 0.08em; color: #fff;
+      text-shadow: 0 2px 4px #000, 0 0 30px rgba(80,140,255,0.5);
+    }
+    #overlay p { max-width: 480px; line-height: 1.6; color: #e8eef8; text-shadow: 0 1px 3px #000; margin-bottom: 10px; font-size: 15px; }
+    #overlay .hint { margin-top: 18px; color: #7ec8ff; font-size: 16px; animation: pulse 1.6s ease-in-out infinite; }
+    #overlay .summary { margin-top: 8px; color: #ffe08a; font-size: 18px; }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
+    #controls-hint {
+      position: absolute; left: 50%; bottom: 78px; transform: translateX(-50%);
+      font-size: 14px; color: rgba(220,230,245,0.85); letter-spacing: 0.04em;
+      pointer-events: none;
+    }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <div id="hud">
+    <div class="crosshair" id="crosshair"></div>
+    <div id="vignette"></div>
+    <div id="banner"></div>
+    <div class="hud-bottom">
+      <div>
+        <div class="stat hp">生命 <strong id="hud-hp">100</strong></div>
+        <div class="stat ammo" style="margin-top:6px">弹药 <strong id="hud-ammo">12 / 48</strong></div>
+      </div>
+      <div style="text-align:right">
+        <div class="stat wave">波次 <strong id="hud-wave">1</strong></div>
+        <div class="stat kills" style="margin-top:6px">击杀 <strong id="hud-kills">0</strong></div>
+      </div>
+    </div>
+    <div id="controls-hint">WASD 移动 · 鼠标瞄准 · 左键射击 · R 换弹 · Shift 冲刺</div>
+  </div>
+  <div id="overlay">
+    <h1>夜巷求生</h1>
+    <p>废弃街区的夜晚，丧尸潮一波接一波。守住阵地，尽可能撑得更久。</p>
+    <p>WASD 移动 · 鼠标瞄准 · 左键射击 · R 换弹 · Shift 冲刺</p>
+    <p class="hint" id="overlay-hint">点击画面开始</p>
+    <p class="summary" id="overlay-summary" hidden></p>
+  </div>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

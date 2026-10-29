@@ -15,7 +15,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.3;
+renderer.toneMappingExposure = 1.6;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -227,7 +227,7 @@ function frame(now) {
 
   // Subtle lamp flicker
   for (const L of world.lampLights) {
-    L.intensity = 6 + Math.sin(now * 0.004 + L.position.x) * 0.45;
+    L.intensity = 10 + Math.sin(now * 0.004 + L.position.x) * 0.6;
   }
 
   postfx.render();

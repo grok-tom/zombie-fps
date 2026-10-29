@@ -7,13 +7,13 @@ import * as THREE from 'three';
  * @param {import('./assets.js').GameAssets | null} [assets]
  */
 export function createWorld(scene, assets = null) {
-  scene.background = new THREE.Color(0x1a2230);
-  scene.fog = new THREE.FogExp2(0x1a2230, 0.012);
+  scene.background = new THREE.Color(0x2a3548);
+  scene.fog = new THREE.FogExp2(0x2a3548, 0.0085);
 
-  const hemi = new THREE.HemisphereLight(0x9bb4d0, 0x1a1510, 0.62);
+  const hemi = new THREE.HemisphereLight(0x9bb4d0, 0x1a1510, 0.92);
   scene.add(hemi);
 
-  const moon = new THREE.DirectionalLight(0xc0d4ff, 0.85);
+  const moon = new THREE.DirectionalLight(0xc0d4ff, 1.2);
   moon.position.set(-30, 50, 10);
   moon.castShadow = true;
   moon.shadow.mapSize.set(1024, 1024);
@@ -29,7 +29,7 @@ export function createWorld(scene, assets = null) {
 
   // Ground — repeating asphalt when available
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x5a6270,
+    color: 0x6a7280,
     roughness: 0.95,
     metalness: 0.05,
   });
@@ -57,7 +57,7 @@ export function createWorld(scene, assets = null) {
 
   // Subtle road markings (slightly lighter strip on cross streets)
   const roadMat = new THREE.MeshStandardMaterial({
-    color: 0x4a5160,
+    color: 0x5a6478,
     roughness: 0.98,
     metalness: 0,
   });
@@ -103,7 +103,7 @@ export function createWorld(scene, assets = null) {
     { x: half, z: 0, w: wallThickness, d: 80 },
   ];
   const wallMat = new THREE.MeshStandardMaterial({
-    color: 0x2a3344,
+    color: 0x3a4558,
     roughness: 0.95,
     metalness: 0.05,
   });
@@ -154,13 +154,13 @@ export function createWorld(scene, assets = null) {
       new THREE.MeshStandardMaterial({
         color: 0xffeeb0,
         emissive: 0xffc070,
-        emissiveIntensity: 2.2,
+        emissiveIntensity: 2.8,
       })
     );
     bulb.position.set(lx, 5.25, lz);
     scene.add(bulb);
 
-    const light = new THREE.PointLight(0xffc070, 6, 24, 2);
+    const light = new THREE.PointLight(0xffc070, 10, 30, 2);
     light.position.set(lx, 5.1, lz);
     scene.add(light);
     lampLightRefs.push(light);

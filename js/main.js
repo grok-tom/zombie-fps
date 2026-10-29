@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createWorld } from './world.js';
+import { loadGameAssets } from './assets.js';
 import { Player } from './player.js';
 import { Weapons } from './weapons.js';
 import { ZombieManager } from './zombies.js';
@@ -13,13 +14,15 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 2.1;
+renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 120);
 
-const world = createWorld(scene);
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const assets = await loadGameAssets();
+const world = createWorld(scene, assets);
 const player = new Player(camera, canvas, world.colliders);
 const weapons = new Weapons(scene, camera);
 weapons.aliveCheck = true;
@@ -217,7 +220,7 @@ function frame(now) {
 
   // Subtle lamp flicker
   for (const L of world.lampLights) {
-    L.intensity = 3.2 + Math.sin(now * 0.004 + L.position.x) * 0.25;
+    L.intensity = 6 + Math.sin(now * 0.004 + L.position.x) * 0.45;
   }
 
   renderer.render(scene, camera);

@@ -2,58 +2,74 @@ import * as THREE from 'three';
 
 /**
  * Build night abandoned city block: ground, buildings, fog, street lamps.
- * Returns colliders (AABB) and spawn points.
+ * Returns colliders (AABB), spawn points, and lamp light refs.
+ * @param {THREE.Scene} scene
+ * @param {import('./assets.js').GameAssets | null} [assets]
  */
-export function createWorld(scene) {
-  scene.background = new THREE.Color(0x3a4a60);
-  scene.fog = new THREE.FogExp2(0x4a5a70, 0.006);
+export function createWorld(scene, assets = null) {
+  scene.background = new THREE.Color(0x1a2230);
+  scene.fog = new THREE.FogExp2(0x1a2230, 0.014);
 
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x667788, 2.2);
+  const hemi = new THREE.HemisphereLight(0x9bb4d0, 0x1a1510, 0.55);
   scene.add(hemi);
 
-  const moon = new THREE.DirectionalLight(0xffffff, 2.0);
-  moon.castShadow = false;
-  moon.position.set(-20, 40, 10);
+  const moon = new THREE.DirectionalLight(0xc0d4ff, 0.85);
+  moon.position.set(-30, 50, 10);
+  moon.castShadow = true;
+  moon.shadow.mapSize.set(1024, 1024);
+  moon.shadow.camera.near = 10;
+  moon.shadow.camera.far = 120;
+  moon.shadow.camera.left = -40;
+  moon.shadow.camera.right = 40;
+  moon.shadow.camera.top = 40;
+  moon.shadow.camera.bottom = -40;
+  moon.shadow.bias = -0.0005;
   scene.add(moon);
 
-  // Ground
+  // Ground — repeating asphalt when available
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x7a8494,
-    roughness: 0.92,
+    color: 0x5a6270,
+    roughness: 0.95,
     metalness: 0.05,
   });
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), groundMat);
+  const texLoader = new THREE.TextureLoader();
+  texLoader.load(
+    'assets/textures/asphalt.png',
+    (tex) => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(24, 24);
+      tex.anisotropy = 4;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      groundMat.map = tex;
+      groundMat.color.set(0xffffff);
+      groundMat.needsUpdate = true;
+    },
+    undefined,
+    () => {
+      /* keep flat color fallback */
+    }
+  );
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // Subtle road markings
-  const roadMat = new THREE.MeshStandardMaterial({ color: 0x6a7384, roughness: 0.95, metalness: 0 });
+  // Subtle road markings (slightly lighter strip on cross streets)
+  const roadMat = new THREE.MeshStandardMaterial({
+    color: 0x4a5160,
+    roughness: 0.98,
+    metalness: 0,
+  });
   const road = new THREE.Mesh(new THREE.PlaneGeometry(12, 70), roadMat);
   road.rotation.x = -Math.PI / 2;
   road.position.y = 0.01;
+  road.receiveShadow = true;
   scene.add(road);
   const road2 = new THREE.Mesh(new THREE.PlaneGeometry(70, 10), roadMat);
   road2.rotation.x = -Math.PI / 2;
   road2.position.y = 0.012;
+  road2.receiveShadow = true;
   scene.add(road2);
-
-  const buildingMat = new THREE.MeshStandardMaterial({
-    color: 0x8a96a8,
-    roughness: 0.88,
-    metalness: 0.15,
-  });
-  const accentMat = new THREE.MeshStandardMaterial({
-    color: 0x3a4252,
-    roughness: 0.8,
-    metalness: 0.2,
-  });
-  const windowMat = new THREE.MeshStandardMaterial({
-    color: 0x1a2030,
-    emissive: 0xffeebb,
-    emissiveIntensity: 1.6,
-    roughness: 0.6,
-  });
 
   const colliders = [];
   const buildings = [
@@ -72,65 +88,10 @@ export function createWorld(scene) {
   ];
 
   for (const b of buildings) {
-    const group = new THREE.Group();
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(b.w, b.h, b.d),
-      buildingMat
-    );
-    mesh.position.y = b.h / 2;
-    group.add(mesh);
-
-    // Roof accent
-    const roof = new THREE.Mesh(
-      new THREE.BoxGeometry(b.w + 0.4, 0.4, b.d + 0.4),
-      accentMat
-    );
-    roof.position.y = b.h + 0.2;
-    group.add(roof);
-
-    // Fake windows
-    const winGeo = new THREE.PlaneGeometry(0.8, 1.1);
-    const faces = [
-      { axis: 'z', sign: 1, lim: b.d / 2 + 0.02 },
-      { axis: 'z', sign: -1, lim: b.d / 2 + 0.02 },
-      { axis: 'x', sign: 1, lim: b.w / 2 + 0.02 },
-      { axis: 'x', sign: -1, lim: b.w / 2 + 0.02 },
-    ];
-    for (const face of faces) {
-      const cols = face.axis === 'z' ? Math.max(2, Math.floor(b.w / 2.2)) : Math.max(2, Math.floor(b.d / 2.2));
-      const rows = Math.max(2, Math.floor(b.h / 3));
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (Math.random() < 0.35) continue;
-          const win = new THREE.Mesh(winGeo, windowMat);
-          const u = (c / (cols - 1) - 0.5) * (face.axis === 'z' ? b.w - 1.5 : b.d - 1.5);
-          const y = 1.5 + r * 2.4;
-          if (face.axis === 'z') {
-            win.position.set(u, y, face.sign * face.lim);
-            if (face.sign < 0) win.rotation.y = Math.PI;
-          } else {
-            win.position.set(face.sign * face.lim, y, u);
-            win.rotation.y = face.sign > 0 ? Math.PI / 2 : -Math.PI / 2;
-          }
-          group.add(win);
-        }
-      }
-    }
-
-    group.position.set(b.x, 0, b.z);
-    scene.add(group);
-
-    colliders.push({
-      minX: b.x - b.w / 2,
-      maxX: b.x + b.w / 2,
-      minZ: b.z - b.d / 2,
-      maxZ: b.z + b.d / 2,
-      minY: 0,
-      maxY: b.h,
-    });
+    placeBuilding(scene, assets, b, colliders);
   }
 
-  // Outer walls (invisible colliders + low visible barriers)
+  // Outer walls (visible barriers + colliders)
   const wallH = 4;
   const wallThickness = 1.5;
   const half = 38;
@@ -148,6 +109,8 @@ export function createWorld(scene) {
   for (const w of walls) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w.w, wallH, w.d), wallMat);
     mesh.position.set(w.x, wallH / 2, w.z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     scene.add(mesh);
     colliders.push({
       minX: w.x - w.w / 2,
@@ -159,11 +122,14 @@ export function createWorld(scene) {
     });
   }
 
-  // Street lamps
+  // Street lamps — ≤6 warm point lights for perf; posts still mark the street
   const lampPositions = [
-    [-6, -6], [6, -8], [-7, 8], [8, 6],
-    [-14, 0], [14, -2], [0, -16], [0, 16],
-    [-22, 8], [22, -10],
+    [-6, -6],
+    [6, -8],
+    [-7, 8],
+    [8, 6],
+    [-14, 0],
+    [14, -2],
   ];
   const lampLightRefs = [];
   for (const [lx, lz] of lampPositions) {
@@ -172,6 +138,7 @@ export function createWorld(scene) {
       new THREE.MeshStandardMaterial({ color: 0x333840, metalness: 0.6, roughness: 0.4 })
     );
     pole.position.set(lx, 2.75, lz);
+    pole.castShadow = true;
     scene.add(pole);
 
     const head = new THREE.Mesh(
@@ -185,14 +152,14 @@ export function createWorld(scene) {
       new THREE.SphereGeometry(0.18, 8, 8),
       new THREE.MeshStandardMaterial({
         color: 0xffeeb0,
-        emissive: 0xffcc66,
-        emissiveIntensity: 2.5,
+        emissive: 0xffc070,
+        emissiveIntensity: 2.2,
       })
     );
     bulb.position.set(lx, 5.25, lz);
     scene.add(bulb);
 
-    const light = new THREE.PointLight(0xfff0d0, 12, 40, 1.0);
+    const light = new THREE.PointLight(0xffc070, 6, 24, 2);
     light.position.set(lx, 5.1, lz);
     scene.add(light);
     lampLightRefs.push(light);
@@ -201,12 +168,19 @@ export function createWorld(scene) {
   // Debris / crates for flavor
   const crateMat = new THREE.MeshStandardMaterial({ color: 0x6a5848, roughness: 0.9 });
   const debrisSpots = [
-    [3, 4], [-4, -3], [10, 10], [-12, 5], [5, -12], [-15, -10],
+    [3, 4],
+    [-4, -3],
+    [10, 10],
+    [-12, 5],
+    [5, -12],
+    [-15, -10],
   ];
   for (const [dx, dz] of debrisSpots) {
     const crate = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.0, 1.2), crateMat);
     crate.position.set(dx, 0.5, dz);
     crate.rotation.y = Math.random() * Math.PI;
+    crate.castShadow = true;
+    crate.receiveShadow = true;
     scene.add(crate);
     colliders.push({
       minX: dx - 0.7,
@@ -233,6 +207,50 @@ export function createWorld(scene) {
   ];
 
   return { colliders, spawnPoints, lampLights: lampLightRefs };
+}
+
+/**
+ * Place one building from glTF prototypes or textured box fallback.
+ * Collider AABB always matches footprint `b` (gameplay unchanged).
+ */
+function placeBuilding(scene, assets, b, colliders) {
+  let root;
+  if (assets && assets.buildings && assets.buildings.length) {
+    const proto = assets.buildings[Math.floor(Math.random() * assets.buildings.length)];
+    root = proto.clone(true);
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const sx = b.w / Math.max(size.x, 0.01);
+    const sz = b.d / Math.max(size.z, 0.01);
+    const s = Math.min(sx, sz);
+    root.scale.multiplyScalar(s);
+    root.position.set(b.x, -box.min.y * s, b.z);
+    root.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+  } else {
+    root = new THREE.Mesh(
+      new THREE.BoxGeometry(b.w, b.h, b.d),
+      new THREE.MeshStandardMaterial({ color: 0x6a7384, roughness: 0.9, metalness: 0.1 })
+    );
+    root.position.set(b.x, b.h / 2, b.z);
+    root.castShadow = true;
+    root.receiveShadow = true;
+  }
+  scene.add(root);
+  colliders.push({
+    minX: b.x - b.w / 2,
+    maxX: b.x + b.w / 2,
+    minZ: b.z - b.d / 2,
+    maxZ: b.z + b.d / 2,
+    minY: 0,
+    maxY: b.h,
+  });
 }
 
 /** Resolve player XZ position against AABB colliders (cylinder-ish radius). */

@@ -26,7 +26,7 @@ const world = createWorld(scene, assets);
 const player = new Player(camera, canvas, world.colliders);
 const weapons = new Weapons(scene, camera);
 weapons.aliveCheck = true;
-const zombies = new ZombieManager(scene, world.colliders);
+const zombies = new ZombieManager(scene, world.colliders, assets);
 const ui = new UI();
 const audio = new AudioBus();
 

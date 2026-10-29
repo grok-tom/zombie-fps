@@ -1,12 +1,16 @@
 import * as THREE from 'three';
 import { resolveCollision } from './world.js';
+import { cloneZombie } from './assets.js';
 
 const ZOMBIE_RADIUS = 0.45;
 const CONTACT_RANGE = 1.35;
 const CONTACT_DAMAGE = 12;
 const CONTACT_COOLDOWN = 0.85;
+const TARGET_HEIGHT = 1.85;
+const FLASH_HEX = 0xff6666;
+const FLASH_INTENSITY = 0.6;
 
-function createZombieMesh() {
+function createBoxZombieMesh() {
   const group = new THREE.Group();
 
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -76,16 +80,106 @@ function createZombieMesh() {
   return group;
 }
 
+function cloneMaterials(root) {
+  root.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    if (Array.isArray(o.material)) {
+      o.material = o.material.map((m) => m.clone());
+    } else {
+      o.material = o.material.clone();
+    }
+  });
+}
+
+function createZombieMesh(assets) {
+  let cloned = null;
+  try {
+    cloned = assets ? cloneZombie(assets) : null;
+  } catch (e) {
+    console.warn('cloneZombie failed, using box fallback', e);
+    cloned = null;
+  }
+
+  if (cloned) {
+    cloneMaterials(cloned);
+    // Measure unscaled bounds for feet + height fit
+    cloned.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(cloned);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const s = TARGET_HEIGHT / Math.max(size.y, 0.01);
+    cloned.scale.setScalar(s);
+    cloned.position.y = -box.min.y * s;
+    const wrap = new THREE.Group();
+    wrap.add(cloned);
+    wrap.userData.visual = cloned;
+    wrap.userData.gltf = true;
+    return wrap;
+  }
+
+  return createBoxZombieMesh();
+}
+
+function pickLocomotionClip(clips) {
+  if (!clips || !clips.length) return null;
+  const prefer = [/walk/i, /run/i, /idle/i];
+  for (const re of prefer) {
+    const short = clips.find((c) => re.test(c.name) && !c.name.includes('|'));
+    if (short) return short;
+    const any = clips.find((c) => re.test(c.name));
+    if (any) return any;
+  }
+  return clips[0];
+}
+
+function forEachEmissiveMaterial(root, fn) {
+  root.traverse((c) => {
+    if (!c.isMesh || !c.material) return;
+    const mats = Array.isArray(c.material) ? c.material : [c.material];
+    for (const m of mats) {
+      if (m && m.emissive) fn(m);
+    }
+  });
+}
+
+function applyHitFlash(mesh) {
+  forEachEmissiveMaterial(mesh, (m) => {
+    if (m.userData._flashSaved == null) {
+      m.userData._flashSaved = {
+        hex: m.emissive.getHex(),
+        intensity: m.emissiveIntensity ?? 0,
+      };
+    }
+    m.emissive.setHex(FLASH_HEX);
+    m.emissiveIntensity = FLASH_INTENSITY;
+  });
+}
+
+function clearHitFlash(mesh) {
+  forEachEmissiveMaterial(mesh, (m) => {
+    const saved = m.userData._flashSaved;
+    if (!saved) return;
+    m.emissive.setHex(saved.hex);
+    m.emissiveIntensity = saved.intensity;
+    delete m.userData._flashSaved;
+  });
+}
+
 export class ZombieManager {
-  constructor(scene, colliders) {
+  constructor(scene, colliders, assets = null) {
     this.scene = scene;
     this.colliders = colliders;
+    this.assets = assets;
     this.zombies = [];
     this.hitMeshes = [];
   }
 
   clear() {
     for (const z of this.zombies) {
+      if (z.mixer) {
+        z.mixer.stopAllAction();
+        z.mixer.uncacheRoot?.(z.mesh.userData.visual || z.mesh);
+      }
       this.scene.remove(z.mesh);
     }
     this.zombies.length = 0;
@@ -93,9 +187,22 @@ export class ZombieManager {
   }
 
   spawn(position, { hp = 60, speed = 2.2 } = {}) {
-    const mesh = createZombieMesh();
+    const mesh = createZombieMesh(this.assets);
     mesh.position.set(position.x, 0, position.z);
     this.scene.add(mesh);
+
+    let mixer = null;
+    const clips = this.assets?.zombieClips;
+    const visual = mesh.userData.visual;
+    if (visual && clips && clips.length) {
+      mixer = new THREE.AnimationMixer(visual);
+      const clip = pickLocomotionClip(clips);
+      if (clip) {
+        const action = mixer.clipAction(clip);
+        action.reset().play();
+      }
+    }
+
     const zombie = {
       mesh,
       hp,
@@ -105,6 +212,8 @@ export class ZombieManager {
       contactCd: 0,
       bob: Math.random() * Math.PI * 2,
       hitFlash: 0,
+      mixer,
+      visualBaseY: visual ? visual.position.y : 0,
     };
     this.zombies.push(zombie);
     this._rebuildHitList();
@@ -130,16 +239,13 @@ export class ZombieManager {
     if (!zombie || !zombie.alive) return false;
     zombie.hp -= amount;
     zombie.hitFlash = 0.15;
-    // Tint flash
-    zombie.mesh.traverse((c) => {
-      if (c.isMesh && c.material && c.material.emissive) {
-        c.material._savedEmissive = c.material.emissive.getHex();
-        c.material.emissive.setHex(0xffffff);
-        c.material.emissiveIntensity = 0.8;
-      }
-    });
+    applyHitFlash(zombie.mesh);
     if (zombie.hp <= 0) {
       zombie.alive = false;
+      if (zombie.mixer) {
+        zombie.mixer.stopAllAction();
+      }
+      clearHitFlash(zombie.mesh);
       this.scene.remove(zombie.mesh);
       this._rebuildHitList();
       return true; // died
@@ -158,19 +264,7 @@ export class ZombieManager {
       if (z.hitFlash > 0) {
         z.hitFlash -= dt;
         if (z.hitFlash <= 0) {
-          z.mesh.traverse((c) => {
-            if (c.isMesh && c.material && c.material.emissive && c.material._savedEmissive != null) {
-              c.material.emissive.setHex(c.material.color ? 0x000000 : 0);
-              // restore eye glow only for small spheres — simpler: reset non-eye
-              if (c.geometry && c.geometry.type === 'SphereGeometry') {
-                c.material.emissive.setHex(0xff1100);
-                c.material.emissiveIntensity = 2.2;
-              } else {
-                c.material.emissive.setHex(0x000000);
-                c.material.emissiveIntensity = 0;
-              }
-            }
-          });
+          clearHitFlash(z.mesh);
         }
       }
 
@@ -187,14 +281,22 @@ export class ZombieManager {
 
       z.mesh.rotation.y = Math.atan2(nx, nz);
 
-      // Shambling animation
       z.bob += dt * (4 + z.speed);
-      const swing = Math.sin(z.bob) * 0.35;
-      const { armL, armR, legL, legR } = z.mesh.userData;
-      if (armL) armL.rotation.x = -0.5 + swing;
-      if (armR) armR.rotation.x = -0.55 - swing;
-      if (legL) legL.rotation.x = swing * 0.6;
-      if (legR) legR.rotation.x = -swing * 0.6;
+      if (z.mixer) {
+        z.mixer.update(dt);
+      } else {
+        const swing = Math.sin(z.bob) * 0.35;
+        const { armL, armR, legL, legR } = z.mesh.userData;
+        if (armL || armR || legL || legR) {
+          if (armL) armL.rotation.x = -0.5 + swing;
+          if (armR) armR.rotation.x = -0.55 - swing;
+          if (legL) legL.rotation.x = swing * 0.6;
+          if (legR) legR.rotation.x = -swing * 0.6;
+        } else if (z.mesh.userData.visual) {
+          z.mesh.userData.visual.position.y =
+            z.visualBaseY + Math.sin(z.bob) * 0.03;
+        }
+      }
 
       if (z.contactCd > 0) z.contactCd -= dt;
       if (dist < CONTACT_RANGE && z.contactCd <= 0) {

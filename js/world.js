@@ -23,6 +23,7 @@ export function createWorld(scene, assets = null) {
   moon.shadow.camera.right = 40;
   moon.shadow.camera.top = 40;
   moon.shadow.camera.bottom = -40;
+  moon.shadow.camera.updateProjectionMatrix();
   moon.shadow.bias = -0.0005;
   scene.add(moon);
 

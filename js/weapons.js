@@ -225,9 +225,10 @@ export class Weapons {
   }
 
   spawnSparks(point, normal) {
-    const geo = new THREE.SphereGeometry(0.04, 6, 6);
     const mat = new THREE.MeshBasicMaterial({ color: 0xffcc66 });
     for (let i = 0; i < 6; i++) {
+      // Unique geometry per spark so dispose in clearSparks / life expiry is safe
+      const geo = new THREE.SphereGeometry(0.04, 6, 6);
       const mesh = new THREE.Mesh(geo, mat.clone());
       mesh.position.copy(point);
       const vel = new THREE.Vector3(

@@ -8,9 +8,9 @@ import * as THREE from 'three';
  */
 export function createWorld(scene, assets = null) {
   scene.background = new THREE.Color(0x1a2230);
-  scene.fog = new THREE.FogExp2(0x1a2230, 0.014);
+  scene.fog = new THREE.FogExp2(0x1a2230, 0.012);
 
-  const hemi = new THREE.HemisphereLight(0x9bb4d0, 0x1a1510, 0.55);
+  const hemi = new THREE.HemisphereLight(0x9bb4d0, 0x1a1510, 0.62);
   scene.add(hemi);
 
   const moon = new THREE.DirectionalLight(0xc0d4ff, 0.85);

@@ -51,6 +51,11 @@ js/audio.js     # WebAudio 音效
 
 夜景街区建筑、丧尸与枪械模型均为本地 vendored 的免费可商用 glTF（主要为 CC0）。作者、许可证与来源见 **`assets/CREDITS.md`**。场景使用冷月光、暖路灯点光、指数雾与 bloom/暗角后处理。
 
+
+## 性能
+
+目标在桌面独立 GPU 的 Chrome 上约 1280×800 达到 ≥30fps。无头/CI 下的 SwiftShader 软件渲染帧率不代表真实机器表现，请勿用其判断流畅度。可选调试开关：`window.__ZFPS_FX.bloom = false` 关 bloom；控制台里也可临时关掉 `renderer.shadowMap.enabled`。
+
 ## 技术
 
 Three.js r160（CDN import map），原生 ES modules，无需打包。

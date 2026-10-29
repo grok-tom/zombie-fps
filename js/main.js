@@ -7,6 +7,7 @@ import { ZombieManager } from './zombies.js';
 import { WaveDirector } from './waves.js';
 import { UI } from './ui.js';
 import { AudioBus } from './audio.js';
+import { createPostFX } from './postfx.js';
 
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -21,7 +22,11 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 120);
 
+const overlayHintEl = document.getElementById('overlay-hint');
+if (overlayHintEl) overlayHintEl.textContent = '加载场景资源…';
 const assets = await loadGameAssets();
+if (overlayHintEl) overlayHintEl.textContent = '点击画面开始';
+
 const world = createWorld(scene, assets);
 const player = new Player(camera, canvas, world.colliders);
 const weapons = new Weapons(scene, camera, assets);
@@ -29,6 +34,7 @@ weapons.aliveCheck = true;
 const zombies = new ZombieManager(scene, world.colliders, assets);
 const ui = new UI();
 const audio = new AudioBus();
+const postfx = createPostFX(renderer, scene, camera);
 
 /** @type {{ mesh: THREE.Object3D, type: string, bob: number }[]} */
 const pickups = [];
@@ -163,6 +169,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  postfx.setSize(window.innerWidth, window.innerHeight);
 });
 
 let last = performance.now();
@@ -223,9 +230,9 @@ function frame(now) {
     L.intensity = 6 + Math.sin(now * 0.004 + L.position.x) * 0.45;
   }
 
-  renderer.render(scene, camera);
-  window.__ZFPS = { player, zombies, waves, weapons, get aliveZ() { return zombies.aliveCount(); } };
-requestAnimationFrame(frame);
+  postfx.render();
+  window.__ZFPS = { player, zombies, waves, weapons, postfx, get aliveZ() { return zombies.aliveCount(); } };
+  requestAnimationFrame(frame);
 }
-window.__ZFPS = { player, zombies, waves, weapons, get aliveZ() { return zombies.aliveCount(); } };
+window.__ZFPS = { player, zombies, waves, weapons, postfx, get aliveZ() { return zombies.aliveCount(); } };
 requestAnimationFrame(frame);

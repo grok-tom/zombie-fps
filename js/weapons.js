@@ -80,6 +80,7 @@ export class Weapons {
     this.cooldown = 0;
     this.reloading = false;
     this.reloadTimer = 0;
+    this.reloadDuration = 0;
     this.mouseDown = false;
     this.muzzleLight = new THREE.PointLight(0xffaa55, 0, 8, 2);
     this.scene.add(this.muzzleLight);
@@ -137,9 +138,28 @@ export class Weapons {
     }
 
     this.gunGroup.position.copy(VIEW_POS);
+    this.gunGroup.rotation.set(0, 0, 0);
     this.camera.add(this.gunGroup);
     this.scene.add(this.camera);
     this._syncViewmodel();
+  }
+
+  _applyRestGunPose(bobY = 0) {
+    this.gunGroup.position.set(VIEW_POS.x, VIEW_POS.y + bobY, VIEW_POS.z);
+    this.gunGroup.rotation.set(0, 0, 0);
+  }
+
+  _applyReloadGunPose(progress) {
+    // progress 0..1 over full reloadTime; dip + roll then ease back (sin envelope)
+    const env = Math.sin(Math.min(1, Math.max(0, progress)) * Math.PI);
+    const eased = env * env; // slightly snappier mid dip
+    const mix = env * 0.65 + eased * 0.35;
+    this.gunGroup.position.x = VIEW_POS.x + mix * 0.04;
+    this.gunGroup.position.y = VIEW_POS.y - mix * 0.2;
+    this.gunGroup.position.z = VIEW_POS.z + mix * 0.1;
+    this.gunGroup.rotation.x = mix * 0.35;
+    this.gunGroup.rotation.y = mix * -0.08;
+    this.gunGroup.rotation.z = mix * 0.55;
   }
 
   _syncViewmodel() {
@@ -193,6 +213,7 @@ export class Weapons {
     const def = this.def;
     if (s.mag >= def.magSize || s.reserve <= 0) return;
     this.reloading = true;
+    this.reloadDuration = def.reloadTime;
     this.reloadTimer = def.reloadTime;
   }
 
@@ -209,9 +230,11 @@ export class Weapons {
     this.cooldown = 0;
     this.reloading = false;
     this.reloadTimer = 0;
+    this.reloadDuration = 0;
     this.mouseDown = false;
     this.muzzleFlashTime = 0;
     this.clearSparks();
+    this._applyRestGunPose(0);
     this._syncViewmodel();
   }
 
@@ -258,6 +281,9 @@ export class Weapons {
         s.mag += take;
         s.reserve -= take;
         this.reloading = false;
+        this.reloadTimer = 0;
+        this.reloadDuration = 0;
+        this._applyRestGunPose(0);
       }
     }
 
@@ -281,10 +307,13 @@ export class Weapons {
       }
     }
 
-    // Gun bob relative to viewmodel base
-    this.gunGroup.position.x = VIEW_POS.x;
-    this.gunGroup.position.y = VIEW_POS.y + Math.sin(performance.now() * 0.008) * 0.004;
-    this.gunGroup.position.z = VIEW_POS.z;
+    // Viewmodel: reload dip/roll, else subtle idle bob
+    if (this.reloading && this.reloadDuration > 0) {
+      const progress = 1 - (this.reloadTimer / this.reloadDuration);
+      this._applyReloadGunPose(progress);
+    } else {
+      this._applyRestGunPose(Math.sin(performance.now() * 0.008) * 0.004);
+    }
 
     if (!locked || !this.aliveCheck) return null;
     if (!this.mouseDown) return null;

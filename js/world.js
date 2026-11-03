@@ -8,12 +8,12 @@ import * as THREE from 'three';
  */
 export function createWorld(scene, assets = null) {
   scene.background = new THREE.Color(0x2a3548);
-  scene.fog = new THREE.FogExp2(0x2a3548, 0.0085);
+  scene.fog = new THREE.FogExp2(0x2a3548, 0.0072);
 
-  const hemi = new THREE.HemisphereLight(0x9bb4d0, 0x1a1510, 0.92);
+  const hemi = new THREE.HemisphereLight(0x9bb4d0, 0x1a1510, 1.05);
   scene.add(hemi);
 
-  const moon = new THREE.DirectionalLight(0xc0d4ff, 1.2);
+  const moon = new THREE.DirectionalLight(0xc0d4ff, 1.35);
   moon.position.set(-30, 50, 10);
   moon.castShadow = true;
   moon.shadow.mapSize.set(1024, 1024);
@@ -154,13 +154,13 @@ export function createWorld(scene, assets = null) {
       new THREE.MeshStandardMaterial({
         color: 0xffeeb0,
         emissive: 0xffc070,
-        emissiveIntensity: 2.8,
+        emissiveIntensity: 3.2,
       })
     );
     bulb.position.set(lx, 5.25, lz);
     scene.add(bulb);
 
-    const light = new THREE.PointLight(0xffc070, 10, 30, 2);
+    const light = new THREE.PointLight(0xffc070, 11.5, 32, 2);
     light.position.set(lx, 5.1, lz);
     scene.add(light);
     lampLightRefs.push(light);

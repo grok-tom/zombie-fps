@@ -6,6 +6,7 @@ const ZOMBIE_RADIUS = 0.45;
 const CONTACT_RANGE = 1.35;
 const CONTACT_DAMAGE = 12;
 const CONTACT_COOLDOWN = 0.85;
+const ATTACK_POSE_TIME = 0.38;
 const TARGET_HEIGHT = 1.85;
 const FLASH_HEX = 0xff6666;
 const FLASH_INTENSITY = 0.6;
@@ -165,6 +166,108 @@ function clearHitFlash(mesh) {
   });
 }
 
+
+function spawnClawBurst(scene, list, playerPos, zombiePos) {
+  // World-space slash + blood near player (eye height), unique geo/mat each
+  const mid = new THREE.Vector3(
+    playerPos.x * 0.65 + zombiePos.x * 0.35,
+    1.35,
+    playerPos.z * 0.65 + zombiePos.z * 0.35
+  );
+  const toward = new THREE.Vector3(
+    playerPos.x - zombiePos.x,
+    0,
+    playerPos.z - zombiePos.z
+  ).normalize();
+
+  // Two slash planes
+  for (let i = 0; i < 2; i++) {
+    const geo = new THREE.PlaneGeometry(0.55 + Math.random() * 0.2, 0.07);
+    const mat = new THREE.MeshBasicMaterial({
+      color: i === 0 ? 0xff3344 : 0xaa1122,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(mid);
+    mesh.position.y += (Math.random() - 0.5) * 0.25;
+    mesh.position.x += (Math.random() - 0.5) * 0.2;
+    mesh.position.z += (Math.random() - 0.5) * 0.2;
+    mesh.lookAt(playerPos.x, mesh.position.y, playerPos.z);
+    mesh.rotation.z = (i === 0 ? 1 : -1) * (0.55 + Math.random() * 0.35);
+    scene.add(mesh);
+    list.push({
+      mesh,
+      vel: toward.clone().multiplyScalar(1.2 + Math.random()),
+      life: 0.28 + Math.random() * 0.1,
+      maxLife: 0.32,
+      kind: 'slash',
+    });
+  }
+
+  // Blood droplets
+  for (let i = 0; i < 8; i++) {
+    const geo = new THREE.SphereGeometry(0.03 + Math.random() * 0.025, 5, 5);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xbb1a1a,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(mid);
+    mesh.position.y += (Math.random() - 0.5) * 0.3;
+    const vel = new THREE.Vector3(
+      toward.x * (2 + Math.random() * 3) + (Math.random() - 0.5) * 2.5,
+      1.5 + Math.random() * 3,
+      toward.z * (2 + Math.random() * 3) + (Math.random() - 0.5) * 2.5
+    );
+    scene.add(mesh);
+    list.push({
+      mesh,
+      vel,
+      life: 0.35 + Math.random() * 0.25,
+      maxLife: 0.5,
+      kind: 'blood',
+    });
+  }
+}
+
+function disposeFxItem(scene, item) {
+  scene.remove(item.mesh);
+  item.mesh.geometry.dispose();
+  if (Array.isArray(item.mesh.material)) {
+    for (const m of item.mesh.material) m.dispose();
+  } else {
+    item.mesh.material.dispose();
+  }
+}
+
+function applyAttackPose(z, strength) {
+  // strength 1 → peak raise, 0 → rest (walk pose overwritten that frame)
+  const { armL, armR } = z.mesh.userData;
+  if (armL || armR) {
+    if (armL) {
+      armL.rotation.x = -0.5 - strength * 1.15;
+      armL.rotation.z = 0.35 + strength * 0.55;
+    }
+    if (armR) {
+      armR.rotation.x = -0.55 - strength * 1.25;
+      armR.rotation.z = -0.35 - strength * 0.55;
+    }
+  } else if (z.mesh.userData.visual) {
+    // glTF: lean + slight pitch toward player
+    z.mesh.userData.visual.rotation.x = -strength * 0.28;
+  }
+}
+
+function clearAttackPoseExtras(z) {
+  if (z.mesh.userData.visual) {
+    z.mesh.userData.visual.rotation.x = 0;
+  }
+}
+
 export class ZombieManager {
   constructor(scene, colliders, assets = null) {
     this.scene = scene;
@@ -172,6 +275,7 @@ export class ZombieManager {
     this.assets = assets;
     this.zombies = [];
     this.hitMeshes = [];
+    this.attackFx = [];
   }
 
   clear() {
@@ -184,6 +288,12 @@ export class ZombieManager {
     }
     this.zombies.length = 0;
     this.hitMeshes.length = 0;
+    this.clearAttackFx();
+  }
+
+  clearAttackFx() {
+    for (const fx of this.attackFx) disposeFxItem(this.scene, fx);
+    this.attackFx.length = 0;
   }
 
   spawn(position, { hp = 60, speed = 2.2 } = {}) {
@@ -210,6 +320,7 @@ export class ZombieManager {
       speed,
       alive: true,
       contactCd: 0,
+      attackPose: 0,
       bob: Math.random() * Math.PI * 2,
       hitFlash: 0,
       mixer,
@@ -282,26 +393,78 @@ export class ZombieManager {
       z.mesh.rotation.y = Math.atan2(nx, nz);
 
       z.bob += dt * (4 + z.speed);
+      if (z.attackPose > 0) z.attackPose -= dt;
+
       if (z.mixer) {
         z.mixer.update(dt);
+        if (z.attackPose > 0) {
+          const strength = Math.min(1, z.attackPose / (ATTACK_POSE_TIME * 0.55));
+          applyAttackPose(z, strength);
+        } else {
+          clearAttackPoseExtras(z);
+        }
       } else {
         const swing = Math.sin(z.bob) * 0.35;
         const { armL, armR, legL, legR } = z.mesh.userData;
         if (armL || armR || legL || legR) {
-          if (armL) armL.rotation.x = -0.5 + swing;
-          if (armR) armR.rotation.x = -0.55 - swing;
+          if (z.attackPose > 0) {
+            const strength = Math.min(1, z.attackPose / (ATTACK_POSE_TIME * 0.55));
+            applyAttackPose(z, strength);
+          } else {
+            if (armL) {
+              armL.rotation.x = -0.5 + swing;
+              armL.rotation.z = 0.35;
+            }
+            if (armR) {
+              armR.rotation.x = -0.55 - swing;
+              armR.rotation.z = -0.35;
+            }
+          }
           if (legL) legL.rotation.x = swing * 0.6;
           if (legR) legR.rotation.x = -swing * 0.6;
         } else if (z.mesh.userData.visual) {
           z.mesh.userData.visual.position.y =
             z.visualBaseY + Math.sin(z.bob) * 0.03;
+          if (z.attackPose > 0) {
+            const strength = Math.min(1, z.attackPose / (ATTACK_POSE_TIME * 0.55));
+            applyAttackPose(z, strength);
+          } else {
+            clearAttackPoseExtras(z);
+          }
         }
       }
 
       if (z.contactCd > 0) z.contactCd -= dt;
       if (dist < CONTACT_RANGE && z.contactCd <= 0) {
         z.contactCd = CONTACT_COOLDOWN;
+        z.attackPose = ATTACK_POSE_TIME;
+        spawnClawBurst(this.scene, this.attackFx, playerPos, z.mesh.position);
         if (onContact) onContact(CONTACT_DAMAGE);
+      }
+    }
+
+    this._updateAttackFx(dt);
+  }
+
+  _updateAttackFx(dt) {
+    for (let i = this.attackFx.length - 1; i >= 0; i--) {
+      const fx = this.attackFx[i];
+      fx.life -= dt;
+      if (fx.kind === 'blood') {
+        fx.vel.y -= 14 * dt;
+        fx.mesh.position.addScaledVector(fx.vel, dt);
+      } else {
+        // slash: drift slightly + fade
+        fx.mesh.position.addScaledVector(fx.vel, dt * 0.35);
+        fx.mesh.scale.x = 1 + (1 - fx.life / fx.maxLife) * 0.6;
+      }
+      const mat = fx.mesh.material;
+      if (mat && mat.opacity != null) {
+        mat.opacity = Math.max(0, (fx.life / fx.maxLife) * 0.95);
+      }
+      if (fx.life <= 0) {
+        disposeFxItem(this.scene, fx);
+        this.attackFx.splice(i, 1);
       }
     }
   }

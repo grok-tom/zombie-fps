@@ -1,2 +1,7 @@
 
 .worktrees/
+demo-*.png
+demo-*.mp4
+preview-*.png
+favicon.ico
+.superpowers/

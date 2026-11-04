@@ -30,6 +30,7 @@ if (overlayHintEl) overlayHintEl.textContent = '点击画面开始';
 const world = createWorld(scene, assets);
 const player = new Player(camera, canvas, world.colliders);
 const weapons = new Weapons(scene, camera, assets);
+weapons.setHurtShake(() => player.hurtShake);
 weapons.aliveCheck = true;
 const zombies = new ZombieManager(scene, world.colliders, assets);
 const ui = new UI();

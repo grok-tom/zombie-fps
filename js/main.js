@@ -195,7 +195,7 @@ function frame(now) {
       if (hit && hit.object) {
         const z = zombies.findByObject(hit.object);
         if (z) {
-          const died = zombies.damageZombie(z, hit.damage);
+          const died = zombies.damageZombie(z, hit.damage, player.position);
           audio.hit();
           if (died) {
             waves.onKill();

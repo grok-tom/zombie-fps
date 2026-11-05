@@ -15,7 +15,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.75;
+renderer.toneMappingExposure = 2.15;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -30,6 +30,7 @@ if (overlayHintEl) overlayHintEl.textContent = '点击画面开始';
 const world = createWorld(scene, assets);
 const player = new Player(camera, canvas, world.colliders);
 const weapons = new Weapons(scene, camera, assets);
+weapons.setHurtShake(() => player.hurtShake);
 weapons.aliveCheck = true;
 const zombies = new ZombieManager(scene, world.colliders, assets);
 const ui = new UI();
@@ -194,7 +195,7 @@ function frame(now) {
       if (hit && hit.object) {
         const z = zombies.findByObject(hit.object);
         if (z) {
-          const died = zombies.damageZombie(z, hit.damage);
+          const died = zombies.damageZombie(z, hit.damage, player.position);
           audio.hit();
           if (died) {
             waves.onKill();
@@ -227,7 +228,7 @@ function frame(now) {
 
   // Subtle lamp flicker
   for (const L of world.lampLights) {
-    L.intensity = 11.5 + Math.sin(now * 0.004 + L.position.x) * 0.7;
+    L.intensity = 14 + Math.sin(now * 0.004 + L.position.x) * 0.8;
   }
 
   postfx.render();

@@ -23,6 +23,7 @@ export class Player {
     this.maxHp = MAX_HP;
     this.alive = true;
     this.damageFlash = 0;
+    this.hurtShake = 0;
     this._onKeyDown = (e) => { this.keys[e.code] = true; };
     this._onKeyUp = (e) => { this.keys[e.code] = false; };
     this._onMouseMove = (e) => this.onMouseMove(e);
@@ -64,13 +65,16 @@ export class Player {
     this.camera.position.copy(this.position);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
-    this.camera.rotation.x = this.pitch;
+    const hs = Math.min(1, this.hurtShake);
+    this.camera.rotation.z = Math.sin(performance.now() * 0.045) * 0.045 * hs;
+    this.camera.rotation.x = this.pitch + Math.sin(performance.now() * 0.06) * 0.025 * hs;
   }
 
   takeDamage(amount) {
     if (!this.alive) return;
     this.hp = Math.max(0, this.hp - amount);
     this.damageFlash = 1;
+    this.hurtShake = 1;
     if (this.hp <= 0) {
       this.alive = false;
       this.hp = 0;
@@ -90,6 +94,7 @@ export class Player {
     this.position.set(0, EYE_HEIGHT, 8);
     this.velocity.set(0, 0, 0);
     this.damageFlash = 0;
+    this.hurtShake = 0;
     this.keys = Object.create(null);
     this.syncCamera();
   }
@@ -97,6 +102,7 @@ export class Player {
   update(dt) {
     if (!this.alive) {
       this.damageFlash = Math.max(0, this.damageFlash - dt * 1.5);
+      this.hurtShake = Math.max(0, this.hurtShake - dt * 3.2);
       return;
     }
 
@@ -121,6 +127,7 @@ export class Player {
     this.syncCamera();
 
     this.damageFlash = Math.max(0, this.damageFlash - dt * 2.2);
+    this.hurtShake = Math.max(0, this.hurtShake - dt * 3.2);
   }
 
   getAimRay() {

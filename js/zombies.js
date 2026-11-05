@@ -6,7 +6,9 @@ const ZOMBIE_RADIUS = 0.45;
 const CONTACT_RANGE = 1.35;
 const CONTACT_DAMAGE = 12;
 const CONTACT_COOLDOWN = 0.85;
-const ATTACK_POSE_TIME = 0.38;
+const ATTACK_POSE_TIME = 0.55;
+const STAGGER_TIME = 0.28;
+const STAGGER_SPEED = 4.5; // m/s away from player while staggering
 const TARGET_HEIGHT = 1.85;
 const FLASH_HEX = 0xff6666;
 const FLASH_INTENSITY = 0.6;
@@ -249,16 +251,34 @@ function applyAttackPose(z, strength) {
   const { armL, armR } = z.mesh.userData;
   if (armL || armR) {
     if (armL) {
-      armL.rotation.x = -0.5 - strength * 1.15;
-      armL.rotation.z = 0.35 + strength * 0.55;
+      armL.rotation.x = -0.5 - strength * 1.5;
+      armL.rotation.z = 0.35 + strength * 0.75;
     }
     if (armR) {
-      armR.rotation.x = -0.55 - strength * 1.25;
-      armR.rotation.z = -0.35 - strength * 0.55;
+      armR.rotation.x = -0.55 - strength * 1.65;
+      armR.rotation.z = -0.35 - strength * 0.75;
     }
   } else if (z.mesh.userData.visual) {
     // glTF: lean + slight pitch toward player
-    z.mesh.userData.visual.rotation.x = -strength * 0.28;
+    z.mesh.userData.visual.rotation.x = -strength * 0.38;
+  }
+}
+
+function applyStaggerPose(z, strength) {
+  // strength 1 → peak lean-back from hit, 0 → rest
+  const { armL, armR } = z.mesh.userData;
+  if (armL || armR) {
+    if (armL) {
+      armL.rotation.x = -0.5 + strength * 0.45;
+      armL.rotation.z = 0.35 - strength * 0.2;
+    }
+    if (armR) {
+      armR.rotation.x = -0.55 + strength * 0.45;
+      armR.rotation.z = -0.35 + strength * 0.2;
+    }
+  } else if (z.mesh.userData.visual) {
+    // glTF: pitch back away from player
+    z.mesh.userData.visual.rotation.x = strength * 0.32;
   }
 }
 
@@ -321,6 +341,9 @@ export class ZombieManager {
       alive: true,
       contactCd: 0,
       attackPose: 0,
+      stagger: 0,
+      staggerDirX: 0,
+      staggerDirZ: 0,
       bob: Math.random() * Math.PI * 2,
       hitFlash: 0,
       mixer,
@@ -346,13 +369,24 @@ export class ZombieManager {
     return null;
   }
 
-  damageZombie(zombie, amount) {
+  damageZombie(zombie, amount, fromPos = null) {
     if (!zombie || !zombie.alive) return false;
     zombie.hp -= amount;
     zombie.hitFlash = 0.15;
     applyHitFlash(zombie.mesh);
+    if (zombie.hp > 0) {
+      zombie.stagger = STAGGER_TIME;
+      if (fromPos) {
+        const dx = zombie.mesh.position.x - fromPos.x;
+        const dz = zombie.mesh.position.z - fromPos.z;
+        const len = Math.hypot(dx, dz) || 1;
+        zombie.staggerDirX = dx / len;
+        zombie.staggerDirZ = dz / len;
+      }
+    }
     if (zombie.hp <= 0) {
       zombie.alive = false;
+      zombie.stagger = 0;
       if (zombie.mixer) {
         zombie.mixer.stopAllAction();
       }
@@ -385,19 +419,36 @@ export class ZombieManager {
       const nx = dx / dist;
       const nz = dz / dist;
 
-      z.mesh.position.x += nx * z.speed * dt;
-      z.mesh.position.z += nz * z.speed * dt;
-      resolveCollision(z.mesh.position, ZOMBIE_RADIUS, this.colliders);
-      z.mesh.position.y = 0;
+      if (z.stagger > 0) {
+        z.stagger -= dt;
+        const sx = z.staggerDirX || -nx;
+        const sz = z.staggerDirZ || -nz;
+        z.mesh.position.x += sx * STAGGER_SPEED * dt;
+        z.mesh.position.z += sz * STAGGER_SPEED * dt;
+        resolveCollision(z.mesh.position, ZOMBIE_RADIUS, this.colliders);
+        z.mesh.position.y = 0;
+      } else {
+        z.mesh.position.x += nx * z.speed * dt;
+        z.mesh.position.z += nz * z.speed * dt;
+        resolveCollision(z.mesh.position, ZOMBIE_RADIUS, this.colliders);
+        z.mesh.position.y = 0;
+      }
 
       z.mesh.rotation.y = Math.atan2(nx, nz);
 
       z.bob += dt * (4 + z.speed);
       if (z.attackPose > 0) z.attackPose -= dt;
 
+      const staggering = z.stagger > 0;
+      const staggerStrength = staggering
+        ? Math.min(1, z.stagger / STAGGER_TIME)
+        : 0;
+
       if (z.mixer) {
         z.mixer.update(dt);
-        if (z.attackPose > 0) {
+        if (staggering) {
+          applyStaggerPose(z, staggerStrength);
+        } else if (z.attackPose > 0) {
           const strength = Math.min(1, z.attackPose / (ATTACK_POSE_TIME * 0.55));
           applyAttackPose(z, strength);
         } else {
@@ -407,7 +458,9 @@ export class ZombieManager {
         const swing = Math.sin(z.bob) * 0.35;
         const { armL, armR, legL, legR } = z.mesh.userData;
         if (armL || armR || legL || legR) {
-          if (z.attackPose > 0) {
+          if (staggering) {
+            applyStaggerPose(z, staggerStrength);
+          } else if (z.attackPose > 0) {
             const strength = Math.min(1, z.attackPose / (ATTACK_POSE_TIME * 0.55));
             applyAttackPose(z, strength);
           } else {
@@ -425,7 +478,9 @@ export class ZombieManager {
         } else if (z.mesh.userData.visual) {
           z.mesh.userData.visual.position.y =
             z.visualBaseY + Math.sin(z.bob) * 0.03;
-          if (z.attackPose > 0) {
+          if (staggering) {
+            applyStaggerPose(z, staggerStrength);
+          } else if (z.attackPose > 0) {
             const strength = Math.min(1, z.attackPose / (ATTACK_POSE_TIME * 0.55));
             applyAttackPose(z, strength);
           } else {

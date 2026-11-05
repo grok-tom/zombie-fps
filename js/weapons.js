@@ -85,6 +85,8 @@ export class Weapons {
     this.muzzleLight = new THREE.PointLight(0xffaa55, 0, 8, 2);
     this.scene.add(this.muzzleLight);
     this.muzzleFlashTime = 0;
+    this.recoil = 0;
+    this._hurtShakeFn = null;
     this.sparks = [];
     this._pistolMesh = null;
     this._smgMesh = null;
@@ -162,6 +164,29 @@ export class Weapons {
     this.gunGroup.rotation.z = mix * 0.55;
   }
 
+  setHurtShake(fn) {
+    this._hurtShakeFn = fn;
+  }
+
+  _kickRecoil() {
+    const auto = this.def.auto;
+    this.recoil = Math.min(1, this.recoil + (auto ? 0.55 : 1));
+  }
+
+  _applyCombatGunPose(bobY, recoil, hurt) {
+    const r = Math.min(1, Math.max(0, recoil));
+    const h = Math.min(1, Math.max(0, hurt));
+    const kickZ = r * (this.def.auto ? 0.06 : 0.11);
+    const kickY = r * (this.def.auto ? 0.02 : 0.045);
+    const kickPitch = r * (this.def.auto ? 0.08 : 0.18);
+    this.gunGroup.position.set(
+      VIEW_POS.x + h * 0.035,
+      VIEW_POS.y + bobY + kickY,
+      VIEW_POS.z + kickZ
+    );
+    this.gunGroup.rotation.set(kickPitch, h * -0.06, h * 0.12);
+  }
+
   _syncViewmodel() {
     if (!this._pistolMesh) return;
     const showSmg = this.current === 'smg' && this._smgMesh;
@@ -233,6 +258,7 @@ export class Weapons {
     this.reloadDuration = 0;
     this.mouseDown = false;
     this.muzzleFlashTime = 0;
+    this.recoil = 0;
     this.clearSparks();
     this._applyRestGunPose(0);
     this._syncViewmodel();
@@ -307,12 +333,15 @@ export class Weapons {
       }
     }
 
-    // Viewmodel: reload dip/roll, else subtle idle bob
+    // Viewmodel: reload overrides recoil; else bob + recoil + hurt flinch
     if (this.reloading && this.reloadDuration > 0) {
       const progress = 1 - (this.reloadTimer / this.reloadDuration);
       this._applyReloadGunPose(progress);
     } else {
-      this._applyRestGunPose(Math.sin(performance.now() * 0.008) * 0.004);
+      const bobY = Math.sin(performance.now() * 0.008) * 0.004;
+      const hurt = this._hurtShakeFn ? this._hurtShakeFn() : 0;
+      this._applyCombatGunPose(bobY, this.recoil, hurt);
+      this.recoil = Math.max(0, this.recoil - dt * (this.def.auto ? 10 : 7));
     }
 
     if (!locked || !this.aliveCheck) return null;
@@ -349,6 +378,7 @@ export class Weapons {
     this.muzzleLight.position.copy(origin).addScaledVector(dir, 0.6);
     this.muzzleFlashTime = 0.05;
     this.muzzleLight.intensity = 2.5;
+    this._kickRecoil();
 
     if (onShot) onShot();
 
